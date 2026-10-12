@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bebederos y Canillas CABA</title>
+  
+  <!-- Estilos del mapa -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: sans-serif; }
+    body { display: flex; flex-direction: column; height: 100vh; }
+    
+    /* Barra superior */
+    header {
+      background: #0284c7;
+      color: white;
+      padding: 10px 14px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      justify-content: space-between;
+      z-index: 1000;
+    }
+    .acciones { display: flex; gap: 8px; align-items: center; }
+    select, button {
+      padding: 8px 12px;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+      font-size: 14px;
+    }
+    button {
+      background: #22c55e;
+      color: white;
+      border: none;
+      cursor: pointer;
+      font-weight: bold;
+    }
+    button:hover { background: #16a34a; }
+    #map { flex: 1; width: 100%; }
+    
+    /* Cartelito al tocar la canilla */
+    .popup-texto { font-size: 13px; line-height: 1.4; }
+    .distancia-box {
+      margin-top: 6px;
+      background: #e0f2fe;
+      color: #0369a1;
+      font-weight: bold;
+      padding: 4px 6px;
+      border-radius: 4px;
+      display: inline-block;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h3>💧 Canillas y Bebederos CABA</h3>
+    <div class="acciones">
+      <!-- Filtro de Barrios -->
+      <select id="filtroBarrio">
+        <option value="TODOS">Todos los barrios</option>
+        <option value="Caballito">Caballito</option>
+        <option value="Palermo">Palermo</option>
+        <option value="Recoleta">Recoleta</option>
+        <option value="San Telmo">San Telmo</option>
+        <option value="Belgrano">Belgrano</option>
+        <option value="Parque Chacabuco">Parque Chacabuco</option>
+        <option value="Villa Crespo">Villa Crespo</option>
+      </select>
+      
+      <!-- Botón de GPS -->
+      <button id="btnGps">📍 Mi Ubicación</button>
+    </div>
+  </header>
+
+  <div id="map"></div>
+
+  <!-- Librería Leaflet -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <script>
+    // 1. Iniciar mapa centrado en CABA
+    const map = L.map('map').setView([-34.615, -58.435], 13);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap'
+    }).addTo(map);
+
+    // 2. Lista de canillas/bebederos reales
+    const puntos = [
+      { nombre: "Parque Rivadavia (Juegos)", barrio: "Caballito", lat: -34.6186, lng: -58.4312 },
+      { nombre: "Parque Centenario (Pista)", barrio: "Caballito", lat: -34.6062, lng: -58.4355 },
+      { nombre: "Plaza Irlanda", barrio: "Caballito", lat: -34.6115, lng: -58.4552 },
+      { nombre: "Parque Las Heras", barrio: "Palermo", lat: -34.5843, lng: -58.4063 },
+      { nombre: "Rosedal de Palermo", barrio: "Palermo", lat: -34.5711, lng: -58.4172 },
+      { nombre: "Plaza Serrano", barrio: "Palermo", lat: -34.5885, lng: -58.4305 },
+      { nombre: "Plaza Francia", barrio: "Recoleta", lat: -34.5860, lng: -58.3920 },
+      { nombre: "Parque Thays", barrio: "Recoleta", lat: -34.5830, lng: -58.3895 },
+      { nombre: "Parque Lezama", barrio: "San Telmo", lat: -34.6281, lng: -58.3698 },
+      { nombre: "Plaza Dorrego", barrio: "San Telmo", lat: -34.6200, lng: -58.3725 },
+      { nombre: "Barrancas de Belgrano", barrio: "Belgrano", lat: -34.5610, lng: -58.4485 },
+      { nombre: "Plaza Castelli", barrio: "Belgrano", lat: -34.5695, lng: -58.4620 },
+      { nombre: "Parque Chacabuco (Pista)", barrio: "Parque Chacabuco", lat: -34.6340, lng: -58.4410 },
+      { nombre: "Parque Los Andes", barrio: "Villa Crespo", lat: -34.5905, lng: -58.4480 }
+    ];
+
+    let miUbicacion = null;
+    let capaPuntos = L.layerGroup().addTo(map);
+    let marcadorYo = null;
+
+    // 3. Dibujar los puntos en el mapa
+    function dibujarPuntos(filtro = "TODOS") {
+      capaPuntos.clearLayers();
+      
+      const filtrados = puntos.filter(p => filtro === "TODOS" || p.barrio === filtro);
+
+      filtrados.forEach(p => {
+        const coord = L.latLng(p.lat, p.lng);
+        const marker = L.circleMarker(coord, {
+          radius: 8,
+          fillColor: "#0284c7",
+          color: "#ffffff",
+          weight: 2,
+          fillOpacity: 0.9
+        });
+
+        // Contenido del cartel al hacer click en el punto
+        let texto = `<div class="popup-texto"><strong>${p.nombre}</strong><br>Barrio: ${p.barrio}`;
+        
+        if (miUbicacion) {
+          const distancia = Math.round(miUbicacion.distanceTo(coord));
+          const distLegible = distancia >= 1000 ? (distancia / 1000).toFixed(2) + " km" : distancia + " metros";
+          texto += `<br><div class="distancia-box">📏 Estás a: ${distLegible}</div>`;
+        } else {
+          texto += `<br><small style="color:gray;">Tocá 'Mi Ubicación' para ver a cuánto estás.</small>`;
+        }
+        
+        texto += `</div>`;
+        marker.bindPopup(texto);
+        capaPuntos.addLayer(marker);
+      });
+    }
+
+    dibujarPuntos();
+
+    // 4. Cambio de barrio en el menú
+    document.getElementById('filtroBarrio').addEventListener('change', (e) => {
+      dibujarPuntos(e.target.value);
+      if (capaPuntos.getLayers().length > 0) {
+        const grupo = L.featureGroup(capaPuntos.getLayers());
+        map.fitBounds(grupo.getBounds().pad(0.3));
+      }
+    });
+
+    // 5. Botón Mi Ubicación (GPS)
+    document.getElementById('btnGps').addEventListener('click', () => {
+      if (!navigator.geolocation) {
+        alert("Tu dispositivo no soporta geolocalización.");
+        return;
+      }
+
+      navigator.geolocation.getCurrentPosition((pos) => {
+        miUbicacion = L.latLng(pos.coords.latitude, pos.coords.longitude);
+
+        if (marcadorYo) {
+          marcadorYo.setLatLng(miUbicacion);
+        } else {
+          marcadorYo = L.circleMarker(miUbicacion, {
+            radius: 9,
+            fillColor: "#ef4444",
+            color: "#ffffff",
+            weight: 2,
+            fillOpacity: 1
+          }).addTo(map).bindPopup("📍 <strong>Estás acá</strong>");
+        }
+
+        map.setView(miUbicacion, 15);
+        dibujarPuntos(document.getElementById('filtroBarrio').value);
+      }, (err) => {
+        alert("Tenés que dar permiso de ubicación para calcular la distancia.");
+      }, { enableHighAccuracy: true });
+    });
+  </script>
+</body>
+</html>
